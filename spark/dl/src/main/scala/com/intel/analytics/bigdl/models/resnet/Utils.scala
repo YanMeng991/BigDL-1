@@ -94,7 +94,7 @@ object Utils {
   case class TestParams(
     folder: String = "./",
     model: String = "",
-    batchSize: Int = 1
+    batchSize: Int = 128
   )
 
   val testParser = new OptionParser[TestParams]("BigDL ResNet on Cifar10 Test Example") {

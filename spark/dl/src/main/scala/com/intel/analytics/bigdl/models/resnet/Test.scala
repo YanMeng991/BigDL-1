@@ -16,12 +16,12 @@
 
 package com.intel.analytics.bigdl.models.resnet
 
+import com.intel.analytics.bigdl.Module
 import com.intel.analytics.bigdl.nn.Module
 import com.intel.analytics.bigdl.utils.Engine
-import com.intel.analytics.bigdl.optim.Top1Accuracy
 import com.intel.analytics.bigdl.models.resnet.Utils._
+import com.intel.analytics.bigdl.optim.{Top1Accuracy, ValidationMethod, ValidationResult}
 import com.intel.analytics.bigdl.dataset.image.{BGRImgNormalizer, BGRImgToSample, BytesToBGRImg}
-
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkContext
 
@@ -47,13 +47,33 @@ object Test {
           Cifar10DataSet.trainStd) -> BGRImgToSample()
       val evaluationSet = transformer(rddData)
 
+      def test(model: Module[Float]): Array[(ValidationResult, ValidationMethod[Float])] = {
+        println(model)
+        val result = model.evaluate(evaluationSet, Array(new Top1Accuracy[Float]),
+          Some(param.batchSize))
+        result.foreach(r => println(s"${r._2} is ${r._1}"))
+        result
+      }
+
       val model = Module.load[Float](param.model)
-      println(model)
+      val modelResult = test(model)
 
-      val result = model.evaluate(evaluationSet, Array(new Top1Accuracy[Float]),
-        Some(param.batchSize))
+      val quantizedModel = Module.quantize(model)
+      val quantizedModelResult = test(quantizedModel)
 
-      result.foreach(r => println(s"${r._2} is ${r._1}"))
+      require(modelResult.length == quantizedModelResult.length)
+
+      modelResult.zip(quantizedModelResult).foreach{ r =>
+        val a1 = r._1._1.result()._1
+        val a2 = r._2._1.result()._1
+        require(Math.abs(a1 - a2) < 0.01, s"accuracy of quantized model seems wrong")
+      }
+
+      val name = s"${param.model}.quantized"
+      println(name)
+      quantizedModel.save(name, overWrite = true)
+      model.save(param.model + ".bak", overWrite = true)
+
       sc.stop()
     }
   }
